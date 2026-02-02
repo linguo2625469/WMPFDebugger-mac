@@ -1,0 +1,19 @@
+{
+  "Version": 18788,
+  "Arch": {
+    "arm64": {
+      "LoadStartHookOffset": "0x4F6454C",
+      "LoadStartHookOffset2": "0x83BC8C8",
+      "CDPFilterHookOffset": "0x83AE884",
+      "ResourceCachePolicyHookOffset": "0x4FCAD90",
+      "StructOffset": 1368
+    },
+    "x64": {
+      "LoadStartHookOffset": "0x5994BA0",
+      "LoadStartHookOffset2": "0x91FFB90",
+      "CDPFilterHookOffset": "0x91F1C20",
+      "ResourceCachePolicyHookOffset": "0x5A066E0",
+      "StructOffset": 1368
+    }
+  }
+}
