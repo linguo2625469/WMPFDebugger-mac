@@ -142,11 +142,12 @@ WMPFDebugger-mac/
 1. 提交 Issue 请求添加新版本支持(我懒，不一定会去更新)
 2. 请查看[chain00x/WMPFDebugger-arm](https://github.com/chain00x/WMPFDebugger-arm)项目内的方法
 3. 赞助催我更新
+4. 看我B站视频[macos打开小程序调试控制台找偏移方法](https://www.bilibili.com/video/BV1gMqfBkEn8)
 
 
 ## 致谢
 
-- [evi0s/WMPFDebugger](https://github.com/evi0s/WMPFDebugger) - 原始 Windows 版本
+- [evi0s/WMPFDebugger](https://github.com/evi0s/WMPFDebugger) - Windows 版本
 - [chain00x/WMPFDebugger-arm](https://github.com/chain00x/WMPFDebugger-arm) - macOS ARM 版本适配
 
 ## 许可证
