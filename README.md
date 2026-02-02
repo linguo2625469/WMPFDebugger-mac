@@ -9,12 +9,13 @@ macOS 版本的微信小程序调试工具（支持 Intel x64 和 Apple Silicon 
 - [WMPFDebugger](https://github.com/evi0s/WMPFDebugger) - Windows 版本的微信小程序调试工具
 - [WMPFDebugger-arm](https://github.com/chain00x/WMPFDebugger-arm) - macOS ARM 版本的适配
 
-本项目在 WMPFDebugger-arm 的基础上，实现了以下改进：
+本项目在 WMPFDebugger-arm 的基础上，实现了以下改进(还有倒退 笑)：
 
 - ✅ **双架构支持**：同时支持 macOS Intel (x64) 和 Apple Silicon (arm64/M芯片)
 - ✅ **完善的版本管理**：通过配置文件管理不同版本的偏移地址，便于维护和扩展
 - ✅ **自动架构检测**：自动检测系统架构并加载对应的配置
 - ✅ **自动版本检测**：自动检测 WeChatAppEx 版本并加载对应的配置文件
+- ✅ **移除ts**：直接使用js，方便小白运行(是的我就是小白)
 
 ## 工作原理
 
@@ -43,7 +44,7 @@ yarn
 **第 2 步** 运行调试服务器
 
 ```bash
-npx ts-node src/index.ts
+node src/index.js
 ```
 
 该命令会：
