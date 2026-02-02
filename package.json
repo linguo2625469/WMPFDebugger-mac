@@ -1,7 +1,7 @@
 {
   "name": "WMPFDebugger-mac",
   "version": "1.0.0",
-  "main": "src/index.ts",
+  "main": "src/index.js",
   "license": "GPL-2.0-only",
   "author": "evi0s",
   "dependencies": {

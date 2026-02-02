@@ -1,11 +1,8 @@
-// 注意：如果你的环境不支持 TypeScript 类型，可以将文件扩展名改为 .js 并移除类型注解
-import { promises } from "node:fs";
-import { EventEmitter } from "node:events";
-import path from "node:path";
-import * as frida from "frida";
-import WebSocket, { WebSocketServer } from "ws";
-import { execSync } from "child_process";
-import { argv } from "node:process";
+const { promises } = require("node:fs");
+const { EventEmitter } = require("node:events");
+const path = require("node:path");
+const WebSocket = require("ws");
+const { execSync } = require("child_process");
 
 // 假设这些是 CommonJS 模块
 const codex = require("./third-party/RemoteDebugCodex.js");
@@ -23,29 +20,29 @@ const DEBUG = false;
 
 const debugMessageEmitter = new DebugMessageEmitter();
 
-const bufferToHexString = (buffer: ArrayBuffer) => {
+const bufferToHexString = (buffer) => {
     return Array.from(new Uint8Array(buffer))
         .map((byte) => byte.toString(16).padStart(2, "0"))
         .join("");
 };
 
 // --- 全局变量用于存储服务器和 Frida 会话实例 ---
-let debugWSS: WebSocketServer | null = null;
-let proxyWSS: WebSocketServer | null = null;
-let fridaSessions: Array<{session: frida.Session, script: frida.Script, pid: number}> = [];
+let debugWSS = null;
+let proxyWSS = null;
+let fridaSessions = [];
 
 const debug_server = () => {
-    const wss = new WebSocketServer({ port: DEBUG_PORT });
+    const wss = new WebSocket.Server({ port: DEBUG_PORT });
     console.log(`[server] debug server running on ws://localhost:${DEBUG_PORT}`);
 
     let messageCounter = 0;
 
-    const onMessage = (message: ArrayBuffer) => {
+    const onMessage = (message) => {
         DEBUG &&
             console.log(
                 `[client] received raw message (hex): ${bufferToHexString(message)}`
             );
-        let unwrappedData: any = null;
+        let unwrappedData = null;
         try {
             const decodedData =
                 messageProto.mmbizwxadevremote.WARemoteDebug_DebugMessage.decode(
@@ -68,7 +65,7 @@ const debug_server = () => {
         }
     };
 
-    wss.on("connection", (ws: WebSocket) => {
+    wss.on("connection", (ws) => {
         console.log("[conn] miniapp client connected");
         ws.on("message", onMessage);
         ws.on("error", (err) => {
@@ -79,7 +76,7 @@ const debug_server = () => {
         });
     });
 
-    debugMessageEmitter.on("proxymessage", (message: string) => {
+    debugMessageEmitter.on("proxymessage", (message) => {
         wss &&
             wss.clients.forEach((client) => {
                 if (client.readyState === WebSocket.OPEN) {
@@ -115,14 +112,14 @@ const debug_server = () => {
 };
 
 const proxy_server = () => {
-    const wss = new WebSocketServer({ port: CDP_PORT });
+    const wss = new WebSocket.Server({ port: CDP_PORT });
     console.log(`[server] proxy server running on ws://localhost:${CDP_PORT}`);
 
-    const onMessage = (message: string) => {
+    const onMessage = (message) => {
         debugMessageEmitter.emit("proxymessage", message);
     };
 
-    wss.on("connection", (ws: WebSocket) => {
+    wss.on("connection", (ws) => {
         console.log("[conn] CDP client connected");
         ws.on("message", onMessage);
         ws.on("error", (err) => {
@@ -133,7 +130,7 @@ const proxy_server = () => {
         });
     });
 
-    debugMessageEmitter.on("cdpmessage", (message: string) => {
+    debugMessageEmitter.on("cdpmessage", (message) => {
         wss &&
             wss.clients.forEach((client) => {
                 if (client.readyState === WebSocket.OPEN) {
@@ -147,7 +144,7 @@ const proxy_server = () => {
 };
 
 // 动态获取 WeChatAppEx 进程 PID 的函数
-const getWeChatAppExPID = (): number[] => {
+const getWeChatAppExPID = () => {
     try {
         // 注意：路径可能需要根据你的实际安装位置调整
         const command = `pgrep -f '/MacOS/WeChatAppEx.app/Contents/MacOS/WeChatAppEx'`;
@@ -174,19 +171,23 @@ const getWeChatAppExPID = (): number[] => {
 // macOS ARM 特定：获取 WeChatAppEx 版本号
 const getWeChatAppExVersion = () => {
     try {
-      const command = `defaults read /Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Info.plist CFBundleVersion`
-      const output = execSync(command, { encoding: 'utf-8' }).trim()
-      const version = output.split('.')[1]
-      if (isNaN(version)) throw new Error(`Invalid version: ${output}`)
-      return version
-    } catch {
-      console.log(`[frida] 获取版本失败，使用默认版本 17078`)
-      return 17078
+        const command = `defaults read /Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Info.plist CFBundleVersion`;
+        const output = execSync(command, { encoding: 'utf-8' }).trim();
+        const version = output.split('.')[1];
+        if (!version || isNaN(Number(version))) {
+            throw new Error(`Invalid version: ${output}`);
+        }
+        return version;
+    } catch (error) {
+        console.log(`[frida] 获取版本失败，使用默认版本 17078`);
+        return '17078';
     }
-  }
+};
 
 const frida_server = async () => {
-    const localDevice = await frida.getLocalDevice();
+    // 动态导入 frida ES Module
+    const fridaModule = await import("frida");
+    const localDevice = await fridaModule.getLocalDevice();
 
     // 获取所有 WeChatAppEx 进程的 PID
     const pids = getWeChatAppExPID();
@@ -200,8 +201,8 @@ const frida_server = async () => {
     let scriptPath = "frida/hook.js"; // 默认脚本
     let configPath = `frida/config/addresses.${wmpfVersion}.json`;
     
-    let scriptContent: string | null = null;
-    let configContent: string | null = null;
+    let scriptContent = null;
+    let configContent = null;
     try {
         // 使用绝对路径或相对于项目根目录的路径
         const absoluteScriptPath = path.isAbsolute(scriptPath) ? scriptPath : path.join(projectRoot, scriptPath);
@@ -223,7 +224,7 @@ const frida_server = async () => {
       }
 
     // 附加到所有找到的进程并加载脚本
-    const sessionsAndScripts: Array<{session: frida.Session, script: frida.Script, pid: number}> = [];
+    const sessionsAndScripts = [];
     
     for (const pid of pids) {
         try {
@@ -259,7 +260,7 @@ const frida_server = async () => {
 const shutdown = async () => {
     console.log("\n[shutdown] Shutting down servers and cleaning up...");
 
-    const closePromises: Promise<void>[] = [];
+    const closePromises = [];
 
     // 关闭所有 Frida 会话和脚本
     if (fridaSessions.length > 0) {
@@ -299,8 +300,8 @@ const shutdown = async () => {
         });
         console.log("[shutdown] Closing debug WebSocket server...");
         closePromises.push(
-            new Promise<void>((resolve, reject) => {
-                debugWSS!.close((err) => {
+            new Promise((resolve, reject) => {
+                debugWSS.close((err) => {
                     if (err) {
                         console.error(
                             "[shutdown] Error closing debug WSS:",
@@ -328,8 +329,8 @@ const shutdown = async () => {
         });
         console.log("[shutdown] Closing proxy WebSocket server...");
         closePromises.push(
-            new Promise<void>((resolve, reject) => {
-                proxyWSS!.close((err) => {
+            new Promise((resolve, reject) => {
+                proxyWSS.close((err) => {
                     if (err) {
                         console.error(
                             "[shutdown] Error closing proxy WSS:",
