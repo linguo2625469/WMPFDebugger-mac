@@ -139,8 +139,9 @@ WMPFDebugger-mac/
 ### 版本不支持
 
 如果提示版本不支持，说明当前 WeChatAppEx 版本还没有对应的配置文件。你可以：
-1. 提交 Issue 请求添加新版本支持
-2. 参考现有配置文件格式，自行添加新版本配置
+1. 提交 Issue 请求添加新版本支持(我懒，不一定会去更新)
+2. 请查看[chain00x/WMPFDebugger-arm](https://github.com/chain00x/WMPFDebugger-arm)项目内的方法
+3. 赞助催我更新
 
 
 ## 致谢
