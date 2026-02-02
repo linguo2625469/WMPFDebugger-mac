@@ -59,7 +59,7 @@ const onLoadStartHook = (a1, structOffset) => {
 
           // 允许的场景值列表
           const allowedValues = [
-            1005, 1007, 1008, 1027, 1035, 1053, 1074, 1145, 1256, 1260, 1302, 1308
+            1005, 1007, 1008, 1012, 1027, 1035, 1053, 1074, 1145, 1168, 1178, 1256, 1260, 1302, 1308
           ]
           if (allowedValues.includes(currentValue)) {
             console.log('[hook] hook scene condition -> 1101')
