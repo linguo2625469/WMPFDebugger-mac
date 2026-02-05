@@ -28,6 +28,7 @@ macOS 版本的微信小程序调试工具（支持 Intel x64 和 Apple Silicon 
 - **包管理器**：yarn
 - **浏览器**：基于 Chromium 的浏览器（如 Chrome、Edge 等）
 - **微信**：已安装并运行微信 macOS 版本
+- **关闭SIP**：您必须关闭电脑的SIP，否则frida没有权限
 
 ## 安装
 
@@ -41,7 +42,7 @@ yarn
 
 ## 使用方法
 
-**第 2 步** 运行调试服务器
+**第 2 步** 运行调试服务器（请注意需要关闭SIP不然会报错）
 
 ```bash
 node src/index.js
