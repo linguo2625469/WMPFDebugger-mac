@@ -211,9 +211,15 @@ const frida_server = async () => {
         ).toString();
         console.log(`[frida] Loaded script from: ${absoluteScriptPath}`);
 
-        configContent = (
-            await promises.readFile(path.isAbsolute(configPath) ? configPath : path.join(projectRoot, configPath))
-        ).toString();
+        try {
+            configContent = (
+                await promises.readFile(path.isAbsolute(configPath) ? configPath : path.join(projectRoot, configPath))
+            ).toString();
+            console.log(`[frida] Loaded config from: ${configPath}`);
+        } catch (configErr) {
+            console.warn(`[frida] 版本配置文件不存在: ${configPath}, 将使用动态偏移查找`);
+            // 不替换 @@CONFIG@@，让 hook.js 自行动态查找偏移
+        }
     } catch (e) {
         console.error(`[frida] Error loading script: ${e}`);
         throw new Error("[frida] hook script not found");
@@ -235,7 +241,20 @@ const frida_server = async () => {
             // 加载脚本
             const script = await session.createScript(scriptContent);
             script.message.connect((message) => {
-                console.log(`[frida client] PID ${pid}:`, message);
+                if (message.type === 'send' && message.payload) {
+                    const payload = message.payload
+                    if (typeof payload === 'object' && payload.type === 'hook') {
+                        console.log(`[frida-hook] ${payload.name}: ${payload.event}`, payload.arg0 || '', payload.retval || '', payload.error || '')
+                    } else if (typeof payload === 'object' && payload.type === 'self-test') {
+                        console.log(`[frida-self-test] ${payload.msg}`)
+                    } else {
+                        console.log(`[frida-send] PID ${pid}:`, JSON.stringify(payload))
+                    }
+                } else if (message.type === 'error') {
+                    console.error(`[frida-error] PID ${pid}:`, message.description || message)
+                } else {
+                    console.log(`[frida-msg] PID ${pid}:`, message.type, JSON.stringify(message).slice(0, 200))
+                }
             });
             
             await script.load();
