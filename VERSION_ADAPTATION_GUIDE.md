@@ -12,7 +12,7 @@ defaults read /Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/I
 ## 2. 提取二进制文件
 
 ```bash
-cp "/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/WeChatAppEx" /tmp/WeChatAppEx_arm64
+lipo -thin arm64 -output /tmp/WeChatAppEx_arm64 "/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/WeChatAppEx"
 ```
 
 ## 3. 定位四个 hook 偏移

@@ -12,15 +12,34 @@ import struct
 
 BINARY = "/tmp/WeChatAppEx_arm64"
 
-# Mach-O 文件头偏移：__TEXT 段在文件中从 0x4000 开始，但运行时映射到模块基址
-HEADER_OFFSET = 0x4000
+def detect_text_fileoff(data):
+    """解析 Mach-O，取 __TEXT 段 fileoff 作为 文件偏移→运行时偏移 的换算基准"""
+    if struct.unpack('<I', data[:4])[0] != 0xfeedfacf:
+        raise SystemExit('不是 arm64 Mach-O，请先用 lipo -thin arm64 提取')
+    ncmds = struct.unpack('<I', data[16:20])[0]
+    off = 32
+    for _ in range(ncmds):
+        cmd, cmdsize = struct.unpack('<II', data[off:off+8])
+        if cmd == 0x19:  # LC_SEGMENT_64
+            segname = data[off+8:off+24].rstrip(b'\0')
+            if segname == b'__TEXT':
+                return struct.unpack('<Q', data[off+40:off+48])[0]
+        off += cmdsize
+    return 0
 
-# 目标字符串的文件偏移（已确认与运行时偏移差 0x4000）
-TARGETS = {
-    "onLoadStart": 0xa2460f1,       # "virtual void applet::AppletIndexContainer::OnLoadStart(bool, const std::string &)"
-    "cdpFilter": 0xadec65e,          # "SendToClientFilter"
-    "resourceCache1": 0x9f4560d,     # "WAPCAdapterAppIndex.js" (第一个，参考 ARM README)
-    "resourceCache2": 0xa233f78,     # "WAPCAdapterAppIndex.js" (第二个，参考 ADAPTATION.md)
+def find_all(data, needle):
+    offs = []
+    i = data.find(needle)
+    while i != -1:
+        offs.append(i)
+        i = data.find(needle, i + 1)
+    return offs
+
+# 目标字符串（文件偏移自动搜索，无需手工维护）
+TARGET_STRINGS = {
+    "onLoadStart": b'virtual void applet::AppletIndexContainer::OnLoadStart',
+    "cdpFilter": b'SendToClientFilter',
+    "resourceCache": b'WAPCAdapterAppIndex.js',
 }
 
 def read_u32(data, offset):
@@ -69,6 +88,7 @@ def is_function_prologue(instr):
 def is_function_end(instr):
     if instr == 0xD65F03C0: return True  # RET
     if (instr & 0xFC000000) == 0x14000000: return True  # B
+    if (instr & 0xFFFFFC1F) == 0xD61F0000: return True  # BR xN (尾调用/跳板)
     return False
 
 def find_function_entry(data, addr):
@@ -113,9 +133,85 @@ def to_runtime(offset):
     """文件偏移 → 运行时偏移（减去 Mach-O header）"""
     return offset - HEADER_OFFSET
 
+def ldr_unsigned_info(instr):
+    """LDR (unsigned offset) 解析: 返回 (size_bits, imm, rn, rd) 或 None"""
+    # 64-bit: 0xF9400000, 32-bit: 0xB9400000; imm = imm12 * (size/8)
+    if (instr & 0xFFC00000) == 0xF9400000:
+        size = 8
+    elif (instr & 0xFFC00000) == 0xB9400000:
+        size = 4
+    else:
+        return None
+    imm12 = (instr >> 10) & 0xFFF
+    rn = (instr >> 5) & 0x1F
+    rd = instr & 0x1F
+    return (size, imm12 * size, rn, rd)
+
+def detect_struct_offsets(data, func_entry, max_scan=0x200):
+    """在 LoadStartHookOffset2 函数开头识别指针链（逐级解引用）:
+    LDR Xa,[X0,#8]; LDR Xb,[Xa,#imm1]; LDR Xb,[Xb,#0x10]; LDR Wc,[Xb,#imm2]; CMP Wc,#1101
+    返回 (struct_offset, target_offset) 或 (None, None)
+    """
+    state = 0   # 0:找 LDR Xa,[X0,#8]  1:找 LDR Xb,[Xa,#imm1]  2:找 LDR [Xb,#0x10]  3:找 LDR Wc,[Xb,#imm2]  4:找 CMP #1101
+    reg = None
+    struct_off = target_off = None
+
+    for i in range(0, max_scan, 4):
+        instr = read_u32(data, func_entry + i)
+
+        if state == 4:
+            # CMP Wn, #1101 (SUBS immediate, 0x71xxxxxx)
+            if (instr & 0xFF000000) == 0x71000000:
+                imm12 = (instr >> 10) & 0xFFF
+                if imm12 == 1101:
+                    return (struct_off, target_off)
+            return (None, None)
+
+        info = ldr_unsigned_info(instr)
+        if info is None:
+            continue
+        size, imm, rn, rd = info
+
+        if state == 0:
+            # LDR Xa, [X0, #8]
+            if rn == 0 and imm == 8 and size == 8 and rd != 0:
+                reg = rd
+                state = 1
+        elif state == 1:
+            # LDR Xb, [Xa, #imm1] —— imm1 即 StructOffset
+            if rn == reg:
+                struct_off = imm
+                reg = rd
+                state = 2
+        elif state == 2:
+            # LDR Xb/Xc, [Xb, #0x10]
+            if rn == reg and imm == 0x10:
+                reg = rd
+                state = 3
+        elif state == 3:
+            # LDR Wc, [Xb, #imm2] —— imm2 即 TargetOffset
+            if rn == reg and size == 4:
+                target_off = imm
+                state = 4
+
+    return (None, None)
+
 def main():
     with open(BINARY, "rb") as f:
         data = f.read()
+
+    HEADER_OFFSET = detect_text_fileoff(data)
+    print(f"__TEXT fileoff = 0x{HEADER_OFFSET:x}")
+
+    # 自动搜索字符串偏移
+    rc_offs = find_all(data, TARGET_STRINGS["resourceCache"])
+    TARGETS = {
+        "onLoadStart": find_all(data, TARGET_STRINGS["onLoadStart"])[0],
+        "cdpFilter": find_all(data, TARGET_STRINGS["cdpFilter"])[0],
+        "resourceCache1": rc_offs[0],   # 第一个引用（参考 ARM README）
+        "resourceCache2": rc_offs[1] if len(rc_offs) > 1 else rc_offs[0],
+    }
+    globals()['HEADER_OFFSET'] = HEADER_OFFSET
 
     scan_end = min(0xaf28000, len(data))
     print(f"Scanning 0x0 to 0x{scan_end:x}")
@@ -205,10 +301,20 @@ def main():
     else:
         print(f"\n[resourceCache] NOT FOUND in either reference")
 
+    # --- 从 LoadStartHookOffset2 函数开头识别 StructOffset / TargetOffset ---
+    # 指针链模式: LDR Xa,[X0,#8]; LDR Xb,[Xa,#imm1]; LDR Xb,[Xb,#0x10]; LDR Wc,[Xb,#imm2]; CMP Wc,#1101
+    struct_offset = target_offset = None
+    if loadStartHookOffset2 is not None:
+        struct_offset, target_offset = detect_struct_offsets(data, loadStartHookOffset2 + HEADER_OFFSET)
+        if struct_offset is not None:
+            print(f"\n[struct] LoadStart2 @ runtime 0x{loadStartHookOffset2:x}: StructOffset={struct_offset}, TargetOffset={target_offset}")
+        else:
+            print(f"\n[struct] 未识别出指针链模式，需人工反汇编确认 LoadStart2 @ 0x{loadStartHookOffset2:x}")
+
     # --- 生成配置 ---
     print("\n=== Suggested Config (runtime offsets) ===")
     print("{")
-    print('  "Version": 25498,')
+    print('  "Version": 25511,')
     print('  "Arch": {')
     print('    "arm64": {')
 
@@ -225,7 +331,11 @@ def main():
     if resourceCacheHookOffset:
         print(f'      "ResourceCachePolicyHookOffset": "0x{resourceCacheHookOffset:x}",')
 
-    print(f'      "StructOffset": 1368')
+    if struct_offset is not None:
+        print(f'      "StructOffset": {struct_offset},')
+        print(f'      "TargetOffset": {target_offset}')
+    else:
+        print(f'      "StructOffset": 1368')
     print('    }')
     print('  }')
     print("}")

@@ -414,6 +414,9 @@ const main = async () => {
             `Debug endpoint: ws://localhost:${DEBUG_PORT}\n` +
             `CDP endpoint:   ws://localhost:${CDP_PORT}`
         );
+        console.log(
+            `\x1b[32mdevtools://devtools/bundled/inspector.html?ws=127.0.0.1:${CDP_PORT}\x1b[0m`
+        );
     } catch (error) {
         console.error("[main] Error starting services:", error);
         process.exit(1); // 启动失败则退出

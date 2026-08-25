@@ -105,6 +105,8 @@ const isFunctionEnd = (addr) => {
     if (instr === 0xD65F03C0) return true
     // B (无条件跳转) = 0x14xxxxxx, 0x17xxxxxx
     if ((instr & 0xFC000000) === 0x14000000) return true
+    // BR xN (寄存器跳转，常见于尾调用/跳板) = 0xD61F0000 | Rn << 5
+    if ((instr & 0xFFFFFC1F) === 0xD61F0000) return true
     return false
   } catch (e) {
     return false
@@ -579,7 +581,13 @@ const verifyHookOffset = (base, offset, name) => {
 let selfTestCount = 0
 const installSelfTest = () => {
   try {
-    const mallocPtr = Module.findExportByName(null, 'malloc')
+    // Frida 17+ 移除了 Module.findExportByName 静态方法，做兼容处理
+    let mallocPtr = null
+    if (typeof Module.findExportByName === 'function') {
+      mallocPtr = Module.findExportByName(null, 'malloc')
+    } else if (typeof Module.getGlobalExportByName === 'function') {
+      mallocPtr = Module.getGlobalExportByName('malloc')
+    }
     if (mallocPtr) {
       Interceptor.attach(mallocPtr, {
         onEnter(args) {
@@ -673,14 +681,6 @@ const main = () => {
     resourceCache: verifyHookOffset(base, config.ResourceCachePolicyHookOffset, 'ResourceCache'),
   }
 
-  // 如果 CDPFilter 验证失败，尝试用 xref 函数本身
-  let cdpOffset = config.CDPFilterHookOffset
-  const xrefCDPOffset = '0x92eae38'
-  console.log(`[frida] Also hooking CDP xref function: ${xrefCDPOffset}`)
-  if (verifyHookOffset(base, xrefCDPOffset, 'CDPFilter(xref)')) {
-    patchCDPFilter(mainModule.base, xrefCDPOffset)
-  }
-
   // 安装所有 hook
   console.log('[frida] --- Installing hooks ---')
   try {
@@ -705,7 +705,7 @@ const main = () => {
   }
 
   try {
-    patchCDPFilter(mainModule.base, cdpOffset)
+    patchCDPFilter(mainModule.base, config.CDPFilterHookOffset)
     console.log('[frida] CDPFilter hook installed OK')
   } catch (e) {
     console.error('[frida] CDPFilter hook install FAILED:', e.message)
